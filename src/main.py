@@ -14,7 +14,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows all commands"""
     command_list = [f"{command} - {description}" for command, description in bot.commands.items()]
-    msg = "All commands:\n" + "\n".join(command_list)
+    msg = "All commands:\n" + "\n\n".join(command_list)
     await context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
 
 
