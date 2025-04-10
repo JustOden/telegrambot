@@ -5,7 +5,8 @@ from config import bot
 
 @bot.command()
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = "Hello! I am a bot created by oden. Do /help for a list of commands!"
+    """Greets user and shows bot info"""
+    msg = f"Hello {update.effective_sender.first_name}! I am a bot created by t.me/justoden. I am still a work in progress. Do /help for a list of commands!"
     await context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
 
 
