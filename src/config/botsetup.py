@@ -1,7 +1,7 @@
 import os
 import importlib
 from enum import Enum, auto
-from telegram.ext import ApplicationBuilder, PrefixHandler, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 
 OWNER_ID = os.getenv("OWNER_ID")
 
@@ -23,7 +23,7 @@ class Bot:
     def command(self, command_name: str=""):
         def decorator(func):
             name = func.__name__ if not command_name else command_name
-            handler = PrefixHandler(["/", "!"], name, func)
+            handler = CommandHandler(name, func)
             self.app.add_handler(handler)
             if func.__doc__:
                 self.commands.append(f"/{name} - {func.__doc__}")
