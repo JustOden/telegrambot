@@ -80,20 +80,19 @@ def search_conjugation(query, flag: str=""):
                 
             return base
 
-# TODO - need better command names
 
 @bot.command()
-async def word(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def spdict(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """English-Spanish dictionary word search"""
     query: str = " ".join(context.args)
     await context.bot.send_message(chat_id=update.effective_chat.id, text=search_word(query))
 
 
 @bot.command()
-async def conjugate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Shows conjugations of spanish verbs. Do '/conjugate help' for flags"""
+async def spverb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shows conjugations of spanish verbs. Do '/spverb help' for flags"""
     if context.args and context.args[0] == "help":
-        msg = f"List of conjugation flags (ex. /conjugate <flag> beber):\n{'\n'.join(['-'+i.name.lower() for i in list(ConjType)[1:]])}"
+        msg = f"List of conjugation flags (ex. /spverb <flag> beber):\n{'\n'.join(['-'+i.name.lower() for i in list(ConjType)[1:]])}"
         await context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
         return
 

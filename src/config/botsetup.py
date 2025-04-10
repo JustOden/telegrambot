@@ -11,7 +11,7 @@ class Event(Enum):
 
 
 class Bot:
-    commands: list[str] = []
+    commands: dict[str, str] = {}
 
     def __init__(self, token: str):
         self.app = ApplicationBuilder().token(token).post_init(self.on_ready).build()
@@ -25,10 +25,7 @@ class Bot:
             name = func.__name__ if not command_name else command_name
             handler = CommandHandler(name, func)
             self.app.add_handler(handler)
-            if func.__doc__:
-                self.commands.append(f"/{name} - {func.__doc__}")
-            else:
-                self.commands.append(f"/{name}")
+            self.commands[f"/{name}"] = func.__doc__ if func.__doc__ else "No description provided"
         return decorator
     
     def event(self, event_type: Event):
