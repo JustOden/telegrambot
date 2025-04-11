@@ -8,7 +8,6 @@ from jisho_api.sentence import Sentence
 from jisho_api.tokenize import Tokens
 from config import bot
 
-# TODO - format for telegram
 URL = "https://jisho.org/search/"
 
 
@@ -17,11 +16,11 @@ def word_search(arg: str) -> list:
 
     if not request:
         return [f"No word found for {arg}."]
-    
+
     entries = json.loads(request.json())
     results = [item for item in entries["data"]]
     data = []
-    
+
     add_nl = lambda s: "\n" + s
     join_c = lambda s: ", ".join(s)
     bold_i = lambda s: s
@@ -34,7 +33,7 @@ def word_search(arg: str) -> list:
         fq = "common word" if result["is_common"] else ""
         jlpt = join_c(_jlpt) if (_jlpt:=result["jlpt"]) else ""
         tags = join_c(_tags) if (_tags:=result["tags"]) else ""
-        
+
         joined = add_nl(f"`{_joined}`") if (_joined:=join_c([i for i in (fq, jlpt, tags) if i])) else ""
         base = f"{word}【{reading}】{joined}\n"
 
@@ -56,33 +55,33 @@ def word_search(arg: str) -> list:
 
             if links:
                 list_ = []
-                
+
                 for link in links:
                     text = link["text"]
                     url = link["url"]
                     text_url = f"[{text}]({url})"
                     list_.append(text_url)
-                    
+
                 base += add_nl(add_i("\n".join(list_)))
-                
+
             base += "\n"
 
         if len(_japanese:=result["japanese"]) > 1:
             list_ = []
-            
+
             for dict_ in _japanese[1:]:
                 other_word = _word if (_word:=dict_["word"]) else dict_["reading"]
                 other_reading = f"【{dict_['reading']}】" if dict_["word"] else ""
                 other_form = f"{other_word}{other_reading}"
                 list_.append(other_form)
-                
+
             base += "\nOther forms\n" + "、".join(list_)
 
         if len(base) > 1015:
             base = base[:1015] + " [...]"
 
         data.append(base)
-        
+
     return data
 
 
@@ -99,7 +98,7 @@ def kanji_search(arg: str) -> list:
 
     else:
         return [f"No kanji found for {arg}."]
-    
+
     data = []
 
     for result in results:
@@ -109,11 +108,11 @@ def kanji_search(arg: str) -> list:
         main_meanings = "`Meanings`\n" + (", ".join(result["data"]["main_meanings"]))
         kun_readings = "\n`Kun`\n" + ("、".join(_kun)) + "\n" if (_kun:=result["data"]["main_readings"]["kun"]) else ""
         on_readings = "\n`On`\n" + ("、".join(_on)) + "\n" if (_on:=result["data"]["main_readings"]["on"]) else ""
-        
+
         grade = result["data"]["meta"]["education"]["grade"]
         jlpt = result["data"]["meta"]["education"]["jlpt"]
         newspaper_rank = result["data"]["meta"]["education"]["newspaper_rank"]
-        
+
         rad_alt_forms = "（" + (", ".join(_alt)) + "）" if (_alt:=result["data"]["radical"]["alt_forms"]) else ""
         rad_meaning = result["data"]["radical"]["meaning"]
         rad_parts = " `Parts`: " + (" ".join(_parts)) if (_parts:=result["data"]["radical"]["parts"]) else ""
@@ -135,9 +134,9 @@ def kanji_search(arg: str) -> list:
                 reading = ex["reading"]
                 meanings = ", ".join(ex["meanings"])
                 base += f"\n{word}【{reading}】\n{meanings}"
-            
+
             base += "\n"
-        
+
         if on_examples:
             base += "\n`Onyomi examples`"
 
@@ -146,12 +145,12 @@ def kanji_search(arg: str) -> list:
                 reading = ex["reading"]
                 meanings = ", ".join(ex["meanings"])
                 base += f"\n{word}【{reading}】\n{meanings}"
-        
+
         if len(base) > 1015:
             base = base[:1015]  + " [...]"
 
         data.append(base)
-        
+
     return data
 
 
@@ -160,7 +159,7 @@ def examples_search(arg: str) -> list:
 
     if not request:
         return [f"No examples found for {arg}."]
-        
+
     results = json.loads(request.json())
     data = []
     base = ""
@@ -174,7 +173,6 @@ def examples_search(arg: str) -> list:
         base = base[:1015]  + " [...]"
 
     data.append(base)
-
     return data
 
 
@@ -183,29 +181,48 @@ def token_search(arg: str) -> list:
 
     if not request:
         return [f"No tokens found for {arg}."]
-    
+
     results = json.loads(request.json())
     data = []
     base = ""
-    
+
     for token in results["data"]:
         base += f"{token['token']} {token['pos_tag']}\n"
-    
+
     if len(base) > 1015:
         base = base[:1015]  + " [...]"
-        
+
     data.append(base)
-    
     return data
 
 
 @bot.command()
 async def jisho(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """English-Japanese dictionary word search"""
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=word_search(" ".join(context.args))[0])
+
+    if context.args:
+        word = " ".join(context.args)
+        msg = word_search(word)[0]
+
+    else:
+        msg = "Please enter a word to search (ex. '/jisho to dance')"
+
+    chat_id = update.effective_chat.id
+    thread_id = update.message.message_thread_id
+    await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg)
 
 
 @bot.command()
 async def kanji(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Searches for kanji definitions"""
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=kanji_search(" ".join(context.args))[0])
+
+    if context.args:
+        kanji = " ".join(context.args)
+        msg = kanji_search(kanji)[0]
+
+    else:
+        msg = "Please enter a kanji to search (ex. '/kanji 猫')"
+
+    chat_id = update.effective_chat.id
+    thread_id = update.message.message_thread_id
+    await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg)

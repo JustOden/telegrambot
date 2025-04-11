@@ -40,7 +40,7 @@ class Pronoun(Enum):
     SECOND_PERSON_PLURAL = "ellos/ellas/Uds."
 
 
-def search_word(query):
+def word_search(query):
     r = requests.get(URL + query + KEY).json()[0]
     short_def = ", ".join(r["shortdef"])
     q = query.replace('20%', ' ')
@@ -48,19 +48,13 @@ def search_word(query):
     return base
 
 
-def search_conjugation(query, flag: str=""):
-    req = requests.get(URL + query + KEY).json()
+def conjugate(verb, flag: str=""):
+    req: list[dict] = requests.get(URL + verb + KEY).json()
     for r in req:
         if "suppl" in r:
             conjugations: list[dict] = r["suppl"]["cjts"]
-            base = ""
-            t = ""
-
-            if "-" in flag:
-                try:
-                    t = getattr(ConjType, f"{flag.split("-")[1].upper()}")
-                except AttributeError as e:
-                    print(e)
+            base: str = ""
+            t: ConjType | str = getattr(ConjType, f"{flag[1:].upper()}") if flag else ""
 
             for cjt in conjugations:
                 cjtype = ConjType(cjt["cjid"])
@@ -77,30 +71,49 @@ def search_conjugation(query, flag: str=""):
                     base += f"{pronoun.value} {conj}\n"
 
                 base += "\n"
-                
+
             return base
 
 
 @bot.command()
 async def spdict(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """English-Spanish dictionary word search"""
-    query: str = " ".join(context.args)
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=search_word(query))
+
+    if context.args:
+        word: str = " ".join(context.args)
+        msg = word_search(word)
+
+    else:
+        msg = "Please enter a word to search (ex. '/spdict mesa')"
+    
+    chat_id = update.effective_chat.id
+    thread_id = update.message.message_thread_id
+    await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg)
 
 
 @bot.command()
 async def spverb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows conjugations of spanish verbs. Do '/spverb help' for flags"""
-    if context.args and context.args[0] == "help":
-        msg = f"List of conjugation flags (ex. /spverb <flag> beber):\n{'\n'.join(['-'+i.name.lower() for i in list(ConjType)[1:]])}"
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
-        return
 
-    if context.args and "-" in (flag:=context.args[0]):
-        query: str = " ".join(context.args[1:])
+    if context.args:
+        flags = ['-'+cjtype.name.lower() for cjtype in list(ConjType)[1:]]
+
+        first_arg = context.args[0].lower()
+
+        if first_arg == "help":
+            msg: str = f"List of conjugation flags (ex. /spverb <flag> beber):\n{'\n'.join(flags)}"
+
+        elif first_arg in flags:
+            verb: str = " ".join(context.args[1:])
+            msg: str = conjugate(verb, flag=first_arg)
+
+        else:
+            verb: str = " ".join(context.args)
+            msg: str = conjugate(verb)
 
     else:
-        flag: str = ""
-        query: str = " ".join(context.args)
-
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=search_conjugation(query, flag=flag))
+        msg = "Please enter a verb to conjugate (ex. '/spverb caminar')"
+    
+    chat_id = update.effective_chat.id
+    thread_id = update.message.message_thread_id
+    await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg)
