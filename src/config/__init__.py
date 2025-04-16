@@ -1,7 +1,7 @@
 import os
 import logging
 from dotenv import load_dotenv; load_dotenv()
-from .botsetup import Bot, Event, load_handlers
+from .botsetup import Bot, load_handlers, EntryType
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SPDICT_TOKEN = os.getenv("SPDICT_TOKEN")
