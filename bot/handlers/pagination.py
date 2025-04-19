@@ -43,7 +43,9 @@ async def pagination(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton("<<", callback_data="page/beginning"),
-            InlineKeyboardButton("<", callback_data="page/prev"),                              InlineKeyboardButton(">", callback_data="page/next"),                              InlineKeyboardButton(">>", callback_data="page/end")]])
+            InlineKeyboardButton("<", callback_data="page/prev"),
+            InlineKeyboardButton(">", callback_data="page/next"),
+            InlineKeyboardButton(">>", callback_data="page/end")]])
     
     msg = f"Page {current_page+1} of {len(data)}\n\n{data[current_page]}"
 
