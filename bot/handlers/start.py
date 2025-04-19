@@ -1,5 +1,6 @@
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
+
 from config import bot
 
 
@@ -12,9 +13,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = await context.bot.get_user_profile_photos(context.bot.id)
     photo = photo.photos[0][-1]
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("All Commands", callback_data="start/help")]
-    ])
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("All Commands", callback_data="start/help")]])
 
     if update.message:
         await update.message.reply_photo(photo, msg, reply_markup=keyboard)

@@ -1,12 +1,14 @@
 import re
 import json
 from enum import Enum, auto
+
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, MessageHandler, CommandHandler, ConversationHandler, filters
 from jisho_api.word import Word
 from jisho_api.kanji import Kanji
 from jisho_api.sentence import Sentence
 from jisho_api.tokenize import Tokens
+
 from config import bot, EntryType
 
 URL = "https://jisho.org/search/"
@@ -32,8 +34,8 @@ class Jisho:
 
         add_nl = lambda s: "\n" + s
         join_c = lambda s: ", ".join(s)
-        bold_i = lambda s: s
-        add_i = lambda s: s
+        bold_i = lambda s: f"<b><i>{s}</i></b>"
+        add_i = lambda s: f"<i>{s}</i>"
 
         for result in results:
             word = _word if (_word:=result["japanese"][0]["word"]) else result["japanese"][0]["reading"]
@@ -43,7 +45,7 @@ class Jisho:
             jlpt = join_c(_jlpt) if (_jlpt:=result["jlpt"]) else ""
             tags = join_c(_tags) if (_tags:=result["tags"]) else ""
 
-            joined = add_nl(f"`{_joined}`") if (_joined:=join_c([i for i in (fq, jlpt, tags) if i])) else ""
+            joined = add_nl(f"<code>{_joined}</code>") if (_joined:=join_c([i for i in (fq, jlpt, tags) if i])) else ""
             base = f"{word}【{reading}】{joined}\n"
 
             for index, senses in enumerate(result["senses"], start=1):
@@ -56,7 +58,7 @@ class Jisho:
 
                 _see_also = "".join(senses["see_also"])
                 see_also_link = URL + ("%20".join(_see_also.split()))
-                see_also = f"see also [{_see_also}]({see_also_link})" if _see_also else ""
+                see_also = f"see also <a href='{see_also_link}'>{_see_also}</a>" if _see_also else ""
 
                 info = join_c(_info) if (_info:=senses["info"]) else ""
                 joined = add_nl(_joined) if (_joined:=join_c([i for i in (tags, restrictions, see_also, info) if i])) else ""
@@ -69,6 +71,7 @@ class Jisho:
                         text = link["text"]
                         url = link["url"]
                         text_url = f"[{text}]({url})"
+                        text_url = f"<a href='{url}'>{text}</a>"
                         list_.append(text_url)
 
                     base += add_nl(add_i("\n".join(list_)))
@@ -93,12 +96,10 @@ class Jisho:
 
         return data
 
-
     def find_kanji(arg: str) -> list:
         # Regex pattern for Kanji (CJK Ideographs)
         kanji_pattern = re.compile(r'[\u4E00-\u9FFF]')
         return kanji_pattern.findall(arg)
-
 
     def kanji_search(arg: str) -> list:
         # TODO - make hiragana, katakana, and romaji also able to do a kanji search
@@ -162,7 +163,6 @@ class Jisho:
 
         return data
 
-
     def examples_search(arg: str) -> list:
         request = Sentence.request(arg)
 
@@ -183,7 +183,6 @@ class Jisho:
 
         data.append(base)
         return data
-
 
     def token_search(arg: str) -> list:
         request = Tokens.request(arg)
@@ -207,34 +206,82 @@ class Jisho:
 
 async def word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     word = update.message.text
-    msg = Jisho.word_search(word)[0]
+    data: list = Jisho.word_search(word)
+    current_page: int = 0
+    msg =f"Page {current_page+1} of {len(data)}\n\n{data[current_page]}"
+    
+    if len(data) > 1:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(">", callback_data="page/next"),
+            InlineKeyboardButton(">>", callback_data="page/end")]])
+    else:
+        keyboard = None
+
     chat_id = update.effective_chat.id
     thread_id = update.message.message_thread_id
-    await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg + "\n/stop")
+    msg = await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg, reply_markup=keyboard)
+    context.chat_data[f"{msg.id}|data"] = data
+    context.chat_data[f"{msg.id}|current_page"] = current_page
 
 
 async def kanji(update: Update, context: ContextTypes.DEFAULT_TYPE):
     word = update.message.text
-    msg = Jisho.kanji_search(word)[0]
+    data: list = Jisho.kanji_search(word)
+    current_page: int = 0
+    msg = data[current_page]
+
+    if len(data) > 1:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(">", callback_data="page/next"),
+            InlineKeyboardButton(">>", callback_data="page/end")]])
+    else:
+        keyboard = None
+
     chat_id = update.effective_chat.id
     thread_id = update.message.message_thread_id
-    await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg + "\n/stop")
+    msg = await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg, reply_markup=keyboard)
+    context.chat_data[f"{msg.id}|data"] = data
+    context.chat_data[f"{msg.id}|current_page"] = current_page
 
 
 async def examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
     word = update.message.text
-    msg = Jisho.examples_search(word)[0]
+    data: list = Jisho.examples_search(word)
+    current_page: int = 0
+    msg = data[current_page]
+
+    if len(data) > 1:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(">", callback_data="page/next"),
+            InlineKeyboardButton(">>", callback_data="page/end")]])
+    else:
+        keyboard = None
+
     chat_id = update.effective_chat.id
     thread_id = update.message.message_thread_id
-    await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg + "\n/stop")
+    msg = await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg, reply_markup=keyboard)
+    context.chat_data[f"{msg.id}|data"] = data
+    context.chat_data[f"{msg.id}|current_page"] = current_page
 
 
 async def token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     word = update.message.text
-    msg = Jisho.token_search(word)[0]
+    data: list = Jisho.token_search(word)
+    current_page: int = 0
+    msg = data[current_page]
+
+    if len(data) > 1:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(">", callback_data="page/next"),
+            InlineKeyboardButton(">>", callback_data="page/end")]])
+    else:
+        keyboard = None
+
     chat_id = update.effective_chat.id
     thread_id = update.message.message_thread_id
-    await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg + "\n/stop")
+    msg = await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg, reply_markup=keyboard)
+    context.chat_data[f"{msg.id}|data"] = data
+    context.chat_data[f"{msg.id}|current_page"] = current_page
 
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -258,7 +305,7 @@ async def jisho_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("Search Examples", callback_data="jisho/examples"),
             InlineKeyboardButton("Search Token", callback_data="jisho/token")
         ],
-        [InlineKeyboardButton("All Commands", callback_data="start/help")]])
+        [InlineKeyboardButton("Show All Commands", callback_data="start/help")]])
 
     await update.effective_chat.send_message(msg, reply_markup=keyboard)
 
@@ -276,24 +323,24 @@ async def jisho_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 )
 async def jisho_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    cmd = query.data.removeprefix("jisho/")
+    btn = query.data.removeprefix("jisho/")
 
-    if cmd == "word":
+    if btn == "word":
         await query.answer("Enter word to search...")
         await update.effective_message.edit_text("Enter word to search or /stop:")
         return State.WORD_SEARCH
 
-    if cmd == "kanji":
+    if btn == "kanji":
         await query.answer("Enter kanji to search...")
         await update.effective_message.edit_text("Enter kanji to search or /stop:")
         return State.KANJI_SEARCH
     
-    if cmd == "examples":
+    if btn == "examples":
         await query.answer("Enter word to search examples...")
         await update.effective_message.edit_text("Enter word to search examples for or /stop:")
         return State.EXAMPLES_SEARCH
     
-    if cmd == "token":
+    if btn == "token":
         await query.answer("Enter sentence to tokenize...")
         await update.effective_message.edit_text("Enter Japanese sentence to tokenize or /stop:")
         return State.TOKEN_SEARCH

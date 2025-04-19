@@ -1,7 +1,9 @@
-from enum import Enum, auto
 import requests
+from enum import Enum, auto
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, filters, ConversationHandler, CommandHandler, MessageHandler
+
 from config import bot, SPDICT_TOKEN, EntryType
 
 URL = "https://dictionaryapi.com/api/v3/references/spanish/json/"
@@ -118,15 +120,43 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def spdict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """English-Spanish dictionary"""
 
-    msg = "Welcome to spdict, a Spanish dictionary!\nSelect an option from below:"
+    if len(context.args) > 1:
+        if context.args[0].lower() == "word":
+            word = " ".join(context.args[1:])
+            msg = Spdict.word_search(word)
+            await update.effective_chat.send_message(msg)
+        
+        if context.args[0].lower() == "conjugate":
+            word = " ".join(context.args[1:])
+            arg = context.args[1:]
+            
+            flags = ['-'+cjtype.name.lower() for cjtype in list(ConjType)[1:]]
 
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("Search Word", callback_data="spdict/word"),
-            InlineKeyboardButton("Conjugate Verb", callback_data="spdict/conjugate")
-        ],
-        [InlineKeyboardButton("All Commands", callback_data="start/help")]])
-    await update.effective_chat.send_message(msg, reply_markup=keyboard)
+            first_arg = arg[0]
+
+            if first_arg == "help":
+                msg: str = f"List of conjugation flags:\n{'\n'.join(flags)}"
+                await update.effective_chat.send_message(msg)
+
+            if first_arg in flags:
+                verb: str = word[len(first_arg)+1:]
+                msg: str = Spdict.conjugate_verb(verb, flag=first_arg)
+
+            else:
+                verb: str = word
+                msg: str = Spdict.conjugate_verb(verb)
+            await update.effective_chat.send_message(msg)
+
+    else:
+        msg = "Welcome to spdict, a Spanish dictionary!\nSelect an option from below:"
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Search Word", callback_data="spdict/word"),
+                InlineKeyboardButton("Conjugate Verb", callback_data="spdict/conjugate")
+            ],
+            [InlineKeyboardButton("Show All Commands", callback_data="start/help")]])
+        await update.effective_chat.send_message(msg, reply_markup=keyboard)
 
 
 @bot.conversation_handler(
@@ -140,14 +170,14 @@ async def spdict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 )
 async def spdict_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    cmd = query.data.removeprefix("spdict/")
+    btn = query.data.removeprefix("spdict/")
 
-    if cmd == "word":
+    if btn == "word":
         await query.answer("Enter word to search...")
         await update.effective_message.edit_text("Enter word to search or /stop:")
         return State.WORD_SEARCH
 
-    if cmd == "conjugate":
+    if btn == "conjugate":
         await query.answer("Enter verb to conjugate...")
         await update.effective_message.edit_text("Enter verb to conjugate or /stop:")
         return State.CONJUGATE

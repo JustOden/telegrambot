@@ -2,9 +2,22 @@ import os
 import importlib
 from enum import Enum, auto
 from typing import Callable
-from telegram import BotCommandScope, BotCommand, Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters, CallbackQueryHandler
 
+from telegram import BotCommandScope, BotCommand, Update, LinkPreviewOptions
+from telegram.ext import (
+    ApplicationBuilder,
+    Defaults,
+    CommandHandler,
+    MessageHandler,
+    ConversationHandler,
+    CallbackQueryHandler,
+    filters
+)
+from telegram.constants import ParseMode
+
+from .logger import start_logging
+
+logger = start_logging()
 
 class EntryType(Enum):
     COMMANDHANDLER = auto()
@@ -16,9 +29,15 @@ class Bot:
     commands: list[tuple[str, BotCommand]] = []
 
     def __init__(self, token: str):
+        self.defaults = Defaults(
+            parse_mode=ParseMode.HTML,
+            link_preview_options=LinkPreviewOptions(is_disabled=True)
+        )
+
         self.app = (
             ApplicationBuilder()
             .token(token)
+            .defaults(self.defaults)
             .post_init(self.post_init)
             .post_stop(self.post_stop)
             .build()
@@ -34,7 +53,7 @@ class Bot:
         for scope, command in grouped_commands.items():
             await app.bot.set_my_commands(command, BotCommandScope(scope))
 
-        print(f"Logged in as {app.bot.first_name}.\nSynced {len(Bot.commands)} commands.")
+        logger.info(f"Logged in as {app.bot.first_name}.\nSynced {len(Bot.commands)} commands.")
 
     @staticmethod
     async def post_stop(app):
@@ -43,7 +62,7 @@ class Bot:
         for scope in scopes:
             await app.bot.delete_my_commands(BotCommandScope(scope))
 
-        print(f"Logging off...")
+        logger.info(f"Logging off...")
 
     def command_handler(self, command_name="", description="", scope=BotCommandScope.DEFAULT):
         def decorator(func: Callable):
@@ -101,6 +120,6 @@ class Bot:
 
 
 def load_handlers():
-    for filename in os.listdir("./src/handlers"):
+    for filename in os.listdir("./bot/handlers"):
         if filename.endswith(".py"):
             importlib.import_module(f"handlers.{filename[:-3]}")
