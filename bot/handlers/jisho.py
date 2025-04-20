@@ -1,5 +1,4 @@
 import re
-import json
 from enum import Enum, auto
 
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
@@ -28,66 +27,67 @@ class Jisho:
         if not request:
             return [f"No word found for {arg}."]
 
-        entries = json.loads(request.json())
-        results = [item for item in entries["data"]]
         data = []
 
         add_nl = lambda s: "\n" + s
+        join_nl = lambda s: "\n".join(s)
         join_c = lambda s: ", ".join(s)
+        join_jc = lambda s: "、".join(s)
         bold_i = lambda s: f"<b><i>{s}</i></b>"
         add_i = lambda s: f"<i>{s}</i>"
+        add_cb = lambda s: f"<code>{s}</code>"
+        jpn_paren = lambda s: f"【{s}】"
+        hyperlink = lambda l, t: f"<a href='{l}'>{t}</a>"
 
-        for result in results:
-            word = _word if (_word:=result["japanese"][0]["word"]) else result["japanese"][0]["reading"]
-            reading = _reading if word and (_reading:=result["japanese"][0]["reading"]) else ""
+        for result in request.data:
+            word = result.japanese[0].word or result.japanese[0].reading
+            reading = jpn_paren(result.japanese[0].reading) if result.japanese[0].word else ""
 
-            fq = "common word" if result["is_common"] else ""
-            jlpt = join_c(_jlpt) if (_jlpt:=result["jlpt"]) else ""
-            tags = join_c(_tags) if (_tags:=result["tags"]) else ""
+            fq = "common word" if result.is_common else ""
+            jlpt = join_c(_jlpt) if (_jlpt:=result.jlpt) else ""
+            tags = join_c(_tags) if (_tags:=result.tags) else ""
 
-            joined = add_nl(f"<code>{_joined}</code>") if (_joined:=join_c([i for i in (fq, jlpt, tags) if i])) else ""
-            base = f"{word}【{reading}】{joined}\n"
+            joined = add_nl(add_cb(_joined)) if (_joined:=join_c([i for i in (fq, jlpt, tags) if i])) else ""
+            base = f"{word}{reading}{joined}\n"
 
-            for index, senses in enumerate(result["senses"], start=1):
-                parts_of_speech = add_nl(bold_i(join_c(_parts_of_speech))) if (_parts_of_speech:=senses["parts_of_speech"]) else ""
-                links = _links if (_links:=senses["links"]) else ""
 
-                english_definitions = join_c(senses["english_definitions"])
-                tags = join_c(_tags) if (_tags:=senses["tags"]) else ""
-                restrictions = "Only applies to " + join_c(_restrictions) if (_restrictions:=senses["restrictions"]) else ""
+            for index, senses in enumerate(result.senses, start=1):
+                parts_of_speech = add_nl(bold_i(join_c(_parts_of_speech))) if (_parts_of_speech:=senses.parts_of_speech) else ""
+                links = _links if (_links:=senses.links) else ""
 
-                _see_also = "".join(senses["see_also"])
+                english_definitions = join_c(senses.english_definitions)
+                tags = join_c(_tags) if (_tags:=senses.tags) else ""
+                restrictions = "Only applies to " + join_c(_restrictions) if (_restrictions:=senses.restrictions) else ""
+
+                _see_also = "".join(senses.see_also)
                 see_also_link = URL + ("%20".join(_see_also.split()))
-                see_also = f"see also <a href='{see_also_link}'>{_see_also}</a>" if _see_also else ""
+                see_also = f"see also {hyperlink(see_also_link, _see_also)}" if _see_also else ""
 
-                info = join_c(_info) if (_info:=senses["info"]) else ""
+                info = join_c(_info) if (_info:=senses.info) else ""
                 joined = add_nl(_joined) if (_joined:=join_c([i for i in (tags, restrictions, see_also, info) if i])) else ""
                 base += f"{parts_of_speech}\n{index}. {english_definitions}{joined}"
 
                 if links:
-                    list_ = []
+                    hyperlinks = []
 
                     for link in links:
-                        text = link["text"]
-                        url = link["url"]
-                        text_url = f"[{text}]({url})"
-                        text_url = f"<a href='{url}'>{text}</a>"
-                        list_.append(text_url)
+                        text_url = hyperlink(link.url, link.text)
+                        hyperlinks.append(text_url)
 
-                    base += add_nl(add_i("\n".join(list_)))
+                    base += add_nl(add_i(join_nl(hyperlinks)))
 
                 base += "\n"
 
-            if len(_japanese:=result["japanese"]) > 1:
-                list_ = []
+            if len(_japanese:=result.japanese) > 1:
+                other_forms = []
 
-                for dict_ in _japanese[1:]:
-                    other_word = _word if (_word:=dict_["word"]) else dict_["reading"]
-                    other_reading = f"【{dict_['reading']}】" if dict_["word"] else ""
+                for jpn in _japanese[1:]:
+                    other_word = jpn.word or jpn.reading
+                    other_reading = jpn_paren(jpn.reading) if jpn.word else ""
                     other_form = f"{other_word}{other_reading}"
-                    list_.append(other_form)
+                    other_forms.append(other_form)
 
-                base += "\nOther forms\n" + "、".join(list_)
+                base += "\nOther forms\n" + join_jc(other_forms)
 
             if len(base) > 1015:
                 base = base[:1015] + " [...]"
@@ -104,57 +104,63 @@ class Jisho:
     def kanji_search(arg: str) -> list:
         # TODO - make hiragana, katakana, and romaji also able to do a kanji search
         if kanji:=Jisho.find_kanji(arg):
-            results = [json.loads(r.json()) for i in kanji if (r:=Kanji.request(i))]
+            results = [r for i in kanji if (r:=Kanji.request(i))]
 
         else:
             return [f"No kanji found for {arg}."]
 
         data = []
 
+        add_nl = lambda s: "\n" + s
+        join_c = lambda s: ", ".join(s)
+        join_jc = lambda s: "、".join(s)
+        add_cb = lambda s: f"<code>{s}</code>"
+        jpn_paren = lambda s: f"【{s}】"
+
         for result in results:
-            kanji = "`Kanji`: " + result["data"]["kanji"]
-            strokes = result["data"]["strokes"]
+            kanji = f"{add_cb('Kanji:')} {result.data.kanji}"
+            strokes = result.data.strokes
 
-            main_meanings = "`Meanings`\n" + (", ".join(result["data"]["main_meanings"]))
-            kun_readings = "\n`Kun`\n" + ("、".join(_kun)) + "\n" if (_kun:=result["data"]["main_readings"]["kun"]) else ""
-            on_readings = "\n`On`\n" + ("、".join(_on)) + "\n" if (_on:=result["data"]["main_readings"]["on"]) else ""
+            main_meanings = f"{add_cb('Meanings')}{add_nl(join_c(result.data.main_meanings))}"
+            kun_readings = f"{add_nl(add_cb('Kun'))}{add_nl(join_jc(_kun))}\n" if (_kun:=result.data.main_readings.kun) else ""
+            on_readings = f"{add_nl(add_cb('On'))}{add_nl(join_jc(_on))}\n" if (_on:=result.data.main_readings.on) else ""
 
-            grade = result["data"]["meta"]["education"]["grade"]
-            jlpt = result["data"]["meta"]["education"]["jlpt"]
-            newspaper_rank = result["data"]["meta"]["education"]["newspaper_rank"]
+            grade = result.data.meta.education.grade
+            jlpt = result.data.meta.education.jlpt.value
+            newspaper_rank = result.data.meta.education.newspaper_rank
 
-            rad_alt_forms = "（" + (", ".join(_alt)) + "）" if (_alt:=result["data"]["radical"]["alt_forms"]) else ""
-            rad_meaning = result["data"]["radical"]["meaning"]
-            rad_parts = " `Parts`: " + (" ".join(_parts)) if (_parts:=result["data"]["radical"]["parts"]) else ""
+            rad_alt_forms = f"（{join_c(_alt)}）" if (_alt:=result.data.radical.alt_forms) else ""
+            rad_meaning = result.data.radical.meaning
+            rad_parts = f" {add_cb('Parts:')} " + (" ".join(_parts)) if (_parts:=result.data.radical.parts) else ""
 
-            rad_basis = result["data"]["radical"]["basis"]
-            rad_variants = " `Variants`: " + (" ".join(_variants)) if (_variants:=result["data"]["radical"]["variants"]) else ""
-            rad = f" `Radical`: {rad_meaning} {rad_basis}"
+            rad_basis = result.data.radical.basis
+            rad_variants = f" {add_cb('Variants:')} " + (" ".join(_variants)) if (_variants:=result.data.radical.variants) else ""
+            rad = f" {add_cb('Radical:')} {rad_meaning} {rad_basis}"
 
-            kun_examples = result["data"]["reading_examples"]["kun"]
-            on_examples = result["data"]["reading_examples"]["on"]
+            kun_examples = result.data.reading_examples.kun
+            on_examples = result.data.reading_examples.on
 
-            base = f"{kanji} `Strokes`: {strokes}\n{rad}{rad_alt_forms}{rad_parts}{rad_variants}\n`JLPT`: {jlpt}, `Taught in`: {grade}, `Newspaper rank`: {newspaper_rank}\n\n{main_meanings}\n{kun_readings}{on_readings}"
+            base = f"{kanji} {add_cb('Strokes:')} {strokes}{add_nl(rad)}{rad_alt_forms}{rad_parts}{rad_variants}{add_nl(add_cb('JLPT:'))} {jlpt}, {add_cb('Taught in:')} {grade}, {add_cb('Newspaper rank:')} {newspaper_rank}{add_nl(add_nl(main_meanings))}{add_nl(kun_readings)}{on_readings}"
 
             if kun_examples:
-                base += "\n`Kunyomi examples`"
+                base += add_nl(add_cb("Kun examples"))
 
                 for ex in kun_examples[:3]:
-                    word = ex["kanji"]
-                    reading = ex["reading"]
-                    meanings = ", ".join(ex["meanings"])
-                    base += f"\n{word}【{reading}】\n{meanings}"
+                    word = ex.kanji
+                    reading = ex.reading
+                    meanings = join_c(ex.meanings)
+                    base += f"{add_nl(word)}{jpn_paren(reading)}{add_nl(meanings)}"
 
                 base += "\n"
 
             if on_examples:
-                base += "\n`Onyomi examples`"
+                base += add_nl(add_cb("On examples"))
 
                 for ex in on_examples[:3]:
-                    word = ex["kanji"]
-                    reading = ex["reading"]
-                    meanings = ", ".join(ex["meanings"])
-                    base += f"\n{word}【{reading}】\n{meanings}"
+                    word = ex.kanji
+                    reading = ex.reading
+                    meanings = join_c(ex.meanings)
+                    base += f"{add_nl(word)}{jpn_paren(reading)}{add_nl(meanings)}"
 
             if len(base) > 1015:
                 base = base[:1015]  + " [...]"
@@ -169,13 +175,12 @@ class Jisho:
         if not request:
             return [f"No examples found for {arg}."]
 
-        results = json.loads(request.json())
         data = []
         base = ""
 
-        for index, result in enumerate(results["data"], start=1):
-            japanese = result["japanese"]
-            en_translation = result["en_translation"]
+        for index, result in enumerate(request.data, start=1):
+            japanese = result.japanese
+            en_translation = result.en_translation
             base += f"{index}. {japanese}\n{en_translation}\n\n"
 
         if len(base) > 1015:
@@ -190,12 +195,11 @@ class Jisho:
         if not request:
             return [f"No tokens found for {arg}."]
 
-        results = json.loads(request.json())
         data = []
         base = ""
 
-        for token in results["data"]:
-            base += f"{token['token']} {token['pos_tag']}\n"
+        for token in request.data:
+            base += f"{token.token} {token.pos_tag.value}\n"
 
         if len(base) > 1015:
             base = base[:1015]  + " [...]"
@@ -211,9 +215,7 @@ async def word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg =f"Page {current_page+1} of {len(data)}\n\n{data[current_page]}"
     
     if len(data) > 1:
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(">", callback_data="page/next"),
-            InlineKeyboardButton(">>", callback_data="page/end")]])
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(">>", callback_data="page/next")]])
     else:
         keyboard = None
 
@@ -231,9 +233,7 @@ async def kanji(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = data[current_page]
 
     if len(data) > 1:
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(">", callback_data="page/next"),
-            InlineKeyboardButton(">>", callback_data="page/end")]])
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(">>", callback_data="page/next")]])
     else:
         keyboard = None
 
@@ -251,9 +251,7 @@ async def examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = data[current_page]
 
     if len(data) > 1:
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(">", callback_data="page/next"),
-            InlineKeyboardButton(">>", callback_data="page/end")]])
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(">>", callback_data="page/next")]])
     else:
         keyboard = None
 
@@ -271,9 +269,7 @@ async def token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = data[current_page]
 
     if len(data) > 1:
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(">", callback_data="page/next"),
-            InlineKeyboardButton(">>", callback_data="page/end")]])
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(">>", callback_data="page/next")]])
     else:
         keyboard = None
 

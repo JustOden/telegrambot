@@ -1,36 +1,12 @@
-import requests
 from enum import Enum, auto
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
 from telegram.ext import ContextTypes, filters, ConversationHandler, CommandHandler, MessageHandler
 
 from config import bot, SPDICT_TOKEN, EntryType
-
+from api import SpanishWord, ConjType
 URL = "https://dictionaryapi.com/api/v3/references/spanish/json/"
 KEY = f"?key={SPDICT_TOKEN}"
-
-
-class ConjType(Enum):
-    PARTICIPLES = "gppt"
-    PRESENT_INDICATIVE = "pind"
-    PRETERITE_INDICATIVE = "pprf"
-    IMPERFECT_INDICATIVE = "pret"
-    FUTURE_INDICATIVE = "futr"
-    CONDITIONAL_INDICATIVE = "cond"
-    PRESENT_SUBJUNCTIVE = "psub"
-    IMPERFECT_SUBJUNCTIVE1 = "pisb1"
-    IMPERFECT_SUBJUNCTIVE2 = "pisb2"
-    FUTURE_SUBJUNCTIVE = "fsub"
-    PRESENT_PERFECT = "ppci"
-    PAST_PERFECT = "ppsi"
-    PRETERITE_PERFECT = "pant"
-    FUTURE_PERFECT = "fpin"
-    CONDITIONAL_PERFECT = "cpef"
-    PRESENT_PERFECT_SUBJUNCTIVE = "ppfs"
-    PAST_PERFECT_SUBJUNCTIVE1 = "ppss1"
-    PAST_PERFECT_SUBJUNCTIVE2 = "ppss2"
-    FUTURE_PERFECT_SUBJUNCTIVE = "fpsb"
-    AFFIRMATIVE_IMPERATIVE = "impf"
 
 
 class Pronoun(Enum):
@@ -48,66 +24,86 @@ class State(Enum):
 
 
 class Spdict:
-    def word_search(query):
-        r = requests.get(URL + query + KEY).json()[0]
-        short_def = ", ".join(r["shortdef"])
-        q = query.replace('20%', ' ')
-        base = f"Searched for '{q}'.\nMeans: {short_def}"
-        return base
+    def word_search(word: str) -> list:
+        r = SpanishWord.request(word)
 
-    def conjugate_verb(verb, flag: str=""):
-        req: list[dict] = requests.get(URL + verb + KEY).json()
-        for r in req:
-            if "suppl" in r:
-                conjugations: list[dict] = r["suppl"]["cjts"]
-                base: str = ""
-                t: ConjType | str = getattr(ConjType, f"{flag[1:].upper()}") if flag else ""
-                for cjt in conjugations:
-                    cjtype = ConjType(cjt["cjid"])
-                    if cjtype == ConjType.PARTICIPLES:
-                        continue
-                    if t and cjtype != t:
-                        continue
-                    base += f"{cjtype.name.replace("_", " ")}\n"
-                    for pronoun, conj in zip(list(Pronoun), cjt["cjfs"]):
-                        base += f"{pronoun.value} {conj}\n"
-                    base += "\n"
-                return base
+        if r.meta == 204:
+            return [f"No results found for {word}"]
+        
+        data: list[str] = []
+
+        hyperlink = lambda l, t: f"<a href='{l}'>{t}</a>"
+        add_i = lambda s: f"<i>{s}</i>"
+
+        for spword in r:
+            lang = spword.meta.lang
+            fl = spword.fl
+            shortdef = spword.shortdef
+            link = hyperlink(spword.audio_link, "audio") if spword.hwi.prs else ""
+            base = f"from {lang.name.capitalize()}\n{spword.hwi.hw}\n{add_i(fl)}\n{(' '.join(shortdef))}\n{link}"
+
+            data.append(base)
+        return data
+
+
+    def conjugate_verb(word: str):
+        r = SpanishWord.request(word)
+
+        data = []
+
+        if (spword:=r.data[0]).is_verb:
+            for verb in spword.suppl.cjts:
+                cjtype = verb.cjid.name.replace('_', ' ').capitalize()
+                cjfs = zip(list(Pronoun), verb.cjfs)
+
+                base = f"{cjtype}\n\n"
+
+                for pn, cjf in cjfs:
+                    if verb.cjid == ConjType.PARTICIPLES:
+                        base += cjf + "\n"
+                    else:
+                        base += f"{pn.value} - {cjf}\n"
+                    
+                data.append(base)
+        
+            return data
 
 
 async def word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     word = update.message.text
-    msg = Spdict.word_search(word)
+    data: list = Spdict.word_search(word)
+    current_page: int = 0
+    msg =f"Page {current_page+1} of {len(data)}\n\n{data[current_page]}"
+    
+    if len(data) > 1:
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(">>", callback_data="spword/next")]])
+    else:
+        keyboard = None
+
     chat_id = update.effective_chat.id
     thread_id = update.message.message_thread_id
-    await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg + "\n/stop")
+    msg = await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg, reply_markup=keyboard, link_preview_options=LinkPreviewOptions(is_disabled=False))
+
+    context.chat_data[f"{msg.id}|data"] = data
+    context.chat_data[f"{msg.id}|current_page"] = current_page
 
 
 async def verb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     word = update.message.text
-
-    flags = ['-'+cjtype.name.lower() for cjtype in list(ConjType)[1:]]
-
-    first_arg = word.split()[0]
-
-    if first_arg == "help":
-        msg: str = f"List of conjugation flags (ex. /spverb <flag> beber):\n{'\n'.join(flags)}"
-        chat_id = update.effective_chat.id
-        thread_id = update.message.message_thread_id
-        await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg + "\n/stop")
-        return State.CONJUGATE
-
-    if first_arg in flags:
-        verb: str = word[len(first_arg)+1:]
-        msg: str = Spdict.conjugate_verb(verb, flag=first_arg)
-
+    data: list = Spdict.conjugate_verb(word)
+    current_page: int = 0
+    msg =f"Page {current_page+1} of {len(data)}\n\n{data[current_page]}"
+    
+    if len(data) > 1:
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(">>", callback_data="page/next")]])
     else:
-        verb: str = word
-        msg: str = Spdict.conjugate_verb(verb)
+        keyboard = None
 
     chat_id = update.effective_chat.id
     thread_id = update.message.message_thread_id
-    await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg + "\n/stop")
+    msg = await context.bot.send_message(chat_id=chat_id, message_thread_id=thread_id, text=msg, reply_markup=keyboard)
+    context.chat_data[f"{msg.id}|data"] = data
+    context.chat_data[f"{msg.id}|current_page"] = current_page
 
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -120,43 +116,16 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def spdict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """English-Spanish dictionary"""
 
-    if len(context.args) > 1:
-        if context.args[0].lower() == "word":
-            word = " ".join(context.args[1:])
-            msg = Spdict.word_search(word)
-            await update.effective_chat.send_message(msg)
-        
-        if context.args[0].lower() == "conjugate":
-            word = " ".join(context.args[1:])
-            arg = context.args[1:]
-            
-            flags = ['-'+cjtype.name.lower() for cjtype in list(ConjType)[1:]]
+    msg = "Welcome to spdict, a Spanish dictionary!\nSelect an option from below:"
 
-            first_arg = arg[0]
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Search Word", callback_data="spdict/word"),
+            InlineKeyboardButton("Conjugate Verb", callback_data="spdict/conjugate")
+        ],
+        [InlineKeyboardButton("Show All Commands", callback_data="start/help")]])
 
-            if first_arg == "help":
-                msg: str = f"List of conjugation flags:\n{'\n'.join(flags)}"
-                await update.effective_chat.send_message(msg)
-
-            if first_arg in flags:
-                verb: str = word[len(first_arg)+1:]
-                msg: str = Spdict.conjugate_verb(verb, flag=first_arg)
-
-            else:
-                verb: str = word
-                msg: str = Spdict.conjugate_verb(verb)
-            await update.effective_chat.send_message(msg)
-
-    else:
-        msg = "Welcome to spdict, a Spanish dictionary!\nSelect an option from below:"
-
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("Search Word", callback_data="spdict/word"),
-                InlineKeyboardButton("Conjugate Verb", callback_data="spdict/conjugate")
-            ],
-            [InlineKeyboardButton("Show All Commands", callback_data="start/help")]])
-        await update.effective_chat.send_message(msg, reply_markup=keyboard)
+    await update.effective_chat.send_message(msg, reply_markup=keyboard)
 
 
 @bot.conversation_handler(
