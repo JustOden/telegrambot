@@ -28,8 +28,8 @@ class ConjType(Enum):
     PARTICIPLES = "gppt"
 
     PRESENT_INDICATIVE = "pind"
-    PRETERITE_INDICATIVE = "pprf"
     IMPERFECT_INDICATIVE = "pret"
+    PRETERITE_INDICATIVE = "pprf"
     FUTURE_INDICATIVE = "futr"
     CONDITIONAL_INDICATIVE = "cond"
 
@@ -56,7 +56,7 @@ class Meta(BaseModel):
     id: str
     uuid: str
     lang: Lang
-    sort: str
+    sort: Optional[str]
     src: str
     section: str
     stems: list[str]
@@ -125,15 +125,18 @@ class WordConfig(BaseModel):
     hwi: HeadWord
     ahws: Optional[AlternativeHeadWord]
     vrs: Optional[list[Variants]]
-    fl: str
+    fl: Optional[str]
     ins: Optional[list]
     lbs: Optional[list[str]]
-    definition: list[Definition]
+    definition: Optional[list[Definition]]
     shortdef: list[str]
     suppl: Optional[Suppl]
 
     @property
-    def audio_link(self):
+    def audio_link(self) -> str | None:
+        if not self.hwi.prs or not self.hwi.prs[0].sound:
+            return None
+
         audio_url = "https://media.merriam-webster.com/audio/prons/{language_code}/{country_code}/{format}/{subdirectory}/{base_filename}.{format}"
 
         return audio_url.format(
@@ -143,77 +146,101 @@ class WordConfig(BaseModel):
             subdirectory=self.hwi.hw[0],
             base_filename=self.hwi.prs[0].sound["audio"]
         )
-    
+
     @property
-    def is_verb(self):
+    def has_cjts(self) -> bool:
         return bool(self.suppl)
 
 
 class WordRequest(BaseModel):
     meta: int
-    data: list[WordConfig]
+    data: list[WordConfig|str]
 
     def __iter__(self):
         yield from self.data
 
     def __len__(self):
         return len(self.data)
-    
+
     def __getitem__(self, index: int):
         return self.data[index]
 
+    def __bool__(self):
+        return bool(self.data)
 
-class SpanishWord:
-    def request(word: str):
-        r: list[dict] = [
+
+class FormattedData(BaseModel):
+    definitions: list[str]
+    conjugations: list[list[str]]
+
+
+class SpanishDict:
+    def request(word: str) -> WordRequest:
+        r: list[dict|str] = requests.get(URL + word + KEY).json()
+        
+        r = [
             {key.replace("def", "definition") if key == "def" else key: val for key, val in i.items()}
-            for i in requests.get(URL + word + KEY).json() if isinstance(i, dict)
-        ]
+            for i in r if isinstance(i, dict) 
+        ] or r
 
         r = {"meta": 200 if r else 204, "data": r}
 
         return WordRequest(**r)
 
-    def get(word: str) -> list:
-        r: WordRequest = SpanishWord.request(word)
-
-        if r.meta == 204:
-            return [f"No results found for {word}"]
-
-        data: list[str] = []
+    def format(request: WordRequest) -> FormattedData:
+        word_defs = []
+        verb_cjts = []
 
         hyperlink = lambda l, t: f"<a href='{l}'>{t}</a>"
         add_i = lambda s: f"<i>{s}</i>"
 
-        for spword in r:
-            lang = spword.meta.lang
-            fl = spword.fl
-            shortdef = spword.shortdef
-            link = hyperlink(spword.audio_link, "audio") if spword.hwi.prs else ""
-            base = f"from {lang.name.capitalize()}\n{spword.hwi.hw}\n{add_i(fl)}\n{(' '.join(shortdef))}\n{link}"
+        for word in request:
+            if not word.definition:
+                continue
+            lang = word.meta.lang.name
+            hw = word.hwi.hw
+            fl = word.fl
+            shortdef = word.shortdef
+            link = hyperlink(word.audio_link, "audio") if word.audio_link else ""
+            base = f"from {lang.capitalize()}\n\nWord: {hw}\n\n{add_i(fl)}\n{(' '.join(shortdef))}\n{link}"
 
-            data.append(base)
+            word_defs.append(base)
 
-        return data
+            cjts = []
+            if word.has_cjts:
+                for i, conjugation in enumerate(word.suppl.cjts):
+                    cjtype = " ".join([s.capitalize() for s in conjugation.cjid.name.split("_")])
 
-    def conjugate_verb(word: str):
-        r: WordRequest = SpanishWord.request(word)
+                    if conjugation.cjid == ConjType.IMPERFECT_SUBJUNCTIVE1 or conjugation.cjid == ConjType.PAST_PERFECT_SUBJUNCTIVE1:
+                        cjfs = zip(list(Pronoun), zip(word.suppl.cjts[i].cjfs, word.suppl.cjts[i+1].cjfs))
 
-        data = []
+                    elif conjugation.cjid == ConjType.IMPERFECT_SUBJUNCTIVE2 or conjugation.cjid == ConjType.PAST_PERFECT_SUBJUNCTIVE2:
+                        continue
 
-        if (spword:=r.data[0]).is_verb:
-            for verb in spword.suppl.cjts:
-                cjtype = verb.cjid.name.replace('_', ' ').capitalize()
-                cjfs = zip(list(Pronoun), verb.cjfs)
-
-                base = f"{cjtype}\n\n"
-
-                for pn, cjf in cjfs:
-                    if verb.cjid == ConjType.PARTICIPLES:
-                        base += cjf + "\n"
                     else:
-                        base += f"{pn.value} - {cjf}\n"
-                    
-                data.append(base)
+                        cjfs = zip(list(Pronoun), conjugation.cjfs)
 
-            return data
+                    if cjtype[-1].isdigit():
+                        cjtype = cjtype[:-1]
+
+                    base = f"{cjtype}\n\n"
+
+                    for pn, cjf in cjfs:
+                        if conjugation.cjid == ConjType.PARTICIPLES:
+                            base += cjf + "\n"
+
+                        elif conjugation.cjid == ConjType.IMPERFECT_SUBJUNCTIVE1 or conjugation.cjid == ConjType.PAST_PERFECT_SUBJUNCTIVE1:
+                            base += f"{pn.value} - {cjf[0]} / {cjf[1]}\n" 
+
+                        else:
+                            base += f"{pn.value} - {cjf}\n"
+
+                    cjts.append(base)
+
+                    print(base)
+                    print("---------------------------------")
+
+            verb_cjts.append(cjts)
+
+        assert len(word_defs) == len(verb_cjts)
+        return FormattedData(definitions=word_defs, conjugations=verb_cjts)

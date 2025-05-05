@@ -1,9 +1,9 @@
 from enum import Enum, auto
 
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update
 from telegram.ext import ContextTypes, MessageHandler, CommandHandler, ConversationHandler, filters
 
-from config import bot, EntryType
+from config import bot, EntryType, Button
 from api import Jisho
 
 
@@ -21,7 +21,9 @@ async def word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg =f"Page {current_page+1} of {len(data)}\n\n{data[current_page]}"
     
     if len(data) > 1:
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(">>", callback_data="page/next")]])
+        keyboard = Button.new((
+            {">>": "page/next"},
+        ))
     else:
         keyboard = None
 
@@ -39,7 +41,9 @@ async def kanji(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = data[current_page]
 
     if len(data) > 1:
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(">>", callback_data="page/next")]])
+        keyboard = Button.new((
+            {">>": "page/next"},
+        ))
     else:
         keyboard = None
 
@@ -57,7 +61,9 @@ async def examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = data[current_page]
 
     if len(data) > 1:
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(">>", callback_data="page/next")]])
+        keyboard = Button.new((
+            {">>": "page/next"},
+        ))
     else:
         keyboard = None
 
@@ -75,7 +81,9 @@ async def token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = data[current_page]
 
     if len(data) > 1:
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(">>", callback_data="page/next")]])
+        keyboard = Button.new((
+            {">>": "page/next"},
+        ))
     else:
         keyboard = None
 
@@ -97,19 +105,19 @@ async def jisho_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """English-Japanese dictionary"""
 
     msg = "Welcome to jisho, a Japanese dictionary!\nSelect an option from below:"
+    
+    keyboard = Button.new((
+        {"Search Word": "jisho/word", "Search Kanji": "jisho/kanji"},
+        {"Search Examples": "jisho/examples", "Search Token": "jisho/token"},
+        {"Show All Commands": "start/help"}
+    ))
 
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("Search Word", callback_data="jisho/word"),
-            InlineKeyboardButton("Search Kanji", callback_data="jisho/kanji")
-        ],
-        [
-            InlineKeyboardButton("Search Examples", callback_data="jisho/examples"),
-            InlineKeyboardButton("Search Token", callback_data="jisho/token")
-        ],
-        [InlineKeyboardButton("Show All Commands", callback_data="start/help")]])
+    chat_id = update.effective_chat.id
+    thread_id = update.message.message_thread_id if update.message else None
 
-    await update.effective_chat.send_message(msg, reply_markup=keyboard)
+    await context.bot.send_message(
+        chat_id=chat_id, message_thread_id=thread_id, text=msg, reply_markup=keyboard
+    )
 
 
 @bot.conversation_handler(

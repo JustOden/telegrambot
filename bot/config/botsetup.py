@@ -11,6 +11,7 @@ from telegram.ext import (
     MessageHandler,
     ConversationHandler,
     CallbackQueryHandler,
+    MessageReactionHandler,
     filters
 )
 from telegram.constants import ParseMode
@@ -18,6 +19,7 @@ from telegram.constants import ParseMode
 from .logger import start_logging
 
 logger = start_logging()
+
 
 class EntryType(Enum):
     COMMANDHANDLER = auto()
@@ -29,7 +31,7 @@ class Bot:
     commands: list[tuple[str, BotCommand]] = []
 
     def __init__(self, token: str):
-        self.defaults = Defaults(
+        defaults = Defaults(
             parse_mode=ParseMode.HTML,
             link_preview_options=LinkPreviewOptions(is_disabled=True)
         )
@@ -37,7 +39,7 @@ class Bot:
         self.app = (
             ApplicationBuilder()
             .token(token)
-            .defaults(self.defaults)
+            .defaults(defaults)
             .post_init(self.post_init)
             .post_stop(self.post_stop)
             .build()
@@ -87,7 +89,12 @@ class Bot:
             self.app.add_handler(handler)
             return func
         return decorator
-
+    
+    def reaction_handler(self, func: Callable):
+        handler = MessageReactionHandler(func)
+        self.app.add_handler(handler)
+        return func
+        
     def conversation_handler(self, entry_type: EntryType, states: dict, fallbacks: list, cmd_name: str="", extra_entry_points: list|None=None, scope=BotCommandScope.DEFAULT, msg_filter=None):
         """Decorated function will be first entry point"""
         def decorator(func: Callable):
@@ -108,7 +115,7 @@ class Bot:
                 entry_points = [msg_handler] + extra_entry_points if extra_entry_points else [msg_handler]
 
             else:
-                raise TypeError("Invalid entry type")
+                raise TypeError("Invalid Entry Type")
 
             handler = ConversationHandler(entry_points=entry_points, states=states, fallbacks=fallbacks)
             self.app.add_handler(handler)
