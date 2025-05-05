@@ -237,9 +237,6 @@ class SpanishDict:
 
                     cjts.append(base)
 
-                    print(base)
-                    print("---------------------------------")
-
             verb_cjts.append(cjts)
 
         assert len(word_defs) == len(verb_cjts)
