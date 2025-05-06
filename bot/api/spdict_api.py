@@ -202,6 +202,20 @@ class SpanishDict:
             fl = word.fl
             shortdef = word.shortdef
             link = hyperlink(word.audio_link, "audio") if word.audio_link else ""
+            # Todo: tidy up nest hell, add pagination for "examples"
+            for definition in word.definition:
+                for sense in definition.sseq[0][0]:
+                    if not isinstance(sense, str):
+                        for dt in sense.dt:
+                            if isinstance(dt, list):
+                                for translations in dt:
+                                    if isinstance(translations, list):
+                                        for translation in translations:
+                                            t = translation.t
+                                            tr = translation.tr
+                                            print(t)
+                                            print(tr)
+                                            print()
             base = f"from {lang.capitalize()}\n\nWord: {hw}\n\n{add_i(fl)}\n{(' '.join(shortdef))}\n{link}"
 
             word_defs.append(base)
